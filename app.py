@@ -1,9 +1,12 @@
+from dotenv import load_dotenv
+load_dotenv()
 import streamlit as st
 from groq import Groq
 import PyPDF2
 
 # Setup Groq
-client = Groq(api_key="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")
+import os
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 st.title("JobBuddy 🤖")
 st.write("AI Job Application Assistant")
