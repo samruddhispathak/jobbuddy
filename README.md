@@ -39,10 +39,10 @@ tailored cover letters — all in seconds.
 ## 🖥️ Screenshots
 
 ### Main Interface
-![JobBuddy Home](screenshot-home.png)
+![JobBuddy Home](Home_Page.png)
 
 ### Analysis Results
-![JobBuddy Analysis](screenshot-analysis.png)
+![JobBuddy Analysis](Analysis.png)
 
 ---
 
