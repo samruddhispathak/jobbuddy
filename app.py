@@ -10,6 +10,19 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.units import inch
 from io import BytesIO
 import streamlit.components.v1 as components
+import requests
+
+# --- RATE LIMITING ---
+MAX_REQUESTS_PER_SESSION = 10
+
+if "request_count" not in st.session_state:
+    st.session_state.request_count = 0
+
+def check_rate_limit():
+    if st.session_state.request_count >= MAX_REQUESTS_PER_SESSION:
+        st.error(f"⚠️ Limit reached ({MAX_REQUESTS_PER_SESSION} requests per session). Refresh to reset.")
+        st.stop()
+    st.session_state.request_count += 1
 
 # --- SETUP ---
 load_dotenv()
@@ -171,6 +184,33 @@ with st.sidebar:
             """, unsafe_allow_html=True)
     else:
         st.caption("No analyses yet. Run one to see history!")
+
+    st.divider()
+    remaining = MAX_REQUESTS_PER_SESSION - st.session_state.request_count
+    st.caption(f"🔋 {remaining}/{MAX_REQUESTS_PER_SESSION} requests remaining")
+    
+    # --- FEEDBACK SECTION ---
+    st.divider()
+    st.markdown("### 💬 Send Feedback")
+    
+    with st.expander("Share your thoughts"):
+        feedback_rating = st.slider("Rate JobBuddy", 1, 5, 5)
+        feedback_text = st.text_area("Your feedback", height=100, placeholder="What did you like? What can be better?")
+        
+        if st.button("📤 Submit Feedback", use_container_width=True):
+            if feedback_text.strip():
+                try:
+                    FEEDBACK_URL = "https://script.google.com/macros/s/AKfycbwJS4g3tIML7z2xdGq9ogO4Pe7anzT3bH1TTVAcDRWIEFZZbfQgaKVBcih1mYqOndAn/exec"
+                    response = requests.post(
+                        FEEDBACK_URL,
+                        json={"feedback": feedback_text, "rating": feedback_rating},
+                        timeout=5
+                    )
+                    st.success("✅ Thank you! Feedback sent 💜")
+                except Exception as e:
+                    st.error("Couldn't send. Please try again later.")
+            else:
+                st.warning("Please write something first!")
     
     st.divider()
     st.caption("JobBuddy 🤖 | Made with ❤️ by Samruddhi")
@@ -205,11 +245,19 @@ if uploaded_file:
     try:
         reader = PyPDF2.PdfReader(uploaded_file)
         for page in reader.pages:
-            cv_text += page.extract_text()
-        cv_extracted = True
-        st.success(f"✅ CV uploaded — {len(cv_text)} characters extracted")
+            extracted = page.extract_text()
+            if extracted:
+                cv_text += extracted
+        
+        if len(cv_text.strip()) < 50:
+            st.warning("⚠️ Couldn't extract much text. Is your CV scanned/image-based? Try a text-based PDF.")
+            cv_extracted = False
+        else:
+            cv_extracted = True
+            st.success(f"✅ CV uploaded — {len(cv_text)} characters extracted")
     except Exception as e:
-        st.error(f"❌ Error reading PDF: {e}")
+        st.error("❌ Couldn't read this PDF. Please try another file.")
+        cv_extracted = False
 
 # --- BUTTONS ---
 st.divider()
@@ -240,11 +288,16 @@ CV:
 
 Job Description:
 {jd}"""
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            timeout=30
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        st.error("❌ AI service unavailable right now. Please try again in a moment.")
+        st.stop()
 
 def generate_cover(cv, jd):
     prompt = f"""Write a professional cover letter (250-300 words) based on this CV and Job Description.
@@ -261,11 +314,16 @@ CV:
 
 Job Description:
 {jd}"""
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            timeout=30
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        st.error("❌ Couldn't generate cover letter. Please try again.")
+        st.stop()
 
 def create_pdf(cover_letter_text):
     buffer = BytesIO()
@@ -289,6 +347,7 @@ if analyze_btn:
     elif not jd_text:
         st.warning("⚠️ Please paste the Job Description")
     else:
+        check_rate_limit()
         with st.spinner("🔍 Analyzing your CV..."):
             result = analyze_cv_jd(cv_text, jd_text)
         
@@ -368,6 +427,7 @@ if cover_btn:
     elif not jd_text:
         st.warning("⚠️ Please paste the Job Description")
     else:
+        check_rate_limit()
         with st.spinner("📝 Generating your cover letter..."):
             st.session_state.cover_letter = generate_cover(cv_text, jd_text)
 
